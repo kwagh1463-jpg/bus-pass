@@ -16,7 +16,6 @@ def home():
     return render_template("index.html")
 
 
-
 # ======================
 # REGISTER
 # ======================
@@ -31,16 +30,14 @@ def register():
         cur = conn.cursor()
 
         try:
-            cur.execute("""
-                INSERT INTO users (name, email, password)
-                VALUES (%s, %s, %s)
-            """, (name, email, password))
+            cur.execute(
+                "INSERT INTO users (name, email, password) VALUES (%s, %s, %s)",
+                (name, email, password)
+            )
             conn.commit()
-
         except Exception:
             conn.rollback()
-            return "Email already registered. Please login."
-
+            return "Email already registered."
         finally:
             cur.close()
             conn.close()
@@ -61,22 +58,19 @@ def login():
 
         conn = get_connection()
         cur = conn.cursor()
+
         cur.execute(
-            "SELECT * FROM users WHERE email=%s AND password=%s",
+            "SELECT id, role FROM users WHERE email=%s AND password=%s",
             (email, password)
         )
+
         user = cur.fetchone()
         cur.close()
         conn.close()
 
         if user:
             session["user_id"] = user[0]
-
-            # Safe role handling
-            if len(user) > 4:
-                session["role"] = user[4]
-            else:
-                session["role"] = "user"
+            session["role"] = user[1]
 
             if session["role"] == "admin":
                 return redirect("/admin")
@@ -89,7 +83,7 @@ def login():
 
 
 # ======================
-# USER DASHBOARD
+# DASHBOARD
 # ======================
 @app.route("/dashboard")
 def dashboard():
@@ -107,22 +101,22 @@ def dashboard():
 
 
 # ======================
-# ADMIN PAGE
+# ADMIN
 # ======================
 @app.route("/admin")
 def admin():
-    if "role" not in session or session["role"] != "admin":
+    if session.get("role") != "admin":
         return redirect("/login")
 
     return render_template("admin.html")
 
 
 # ======================
-# ADD BUS (ADMIN)
+# ADD BUS
 # ======================
 @app.route("/add_bus", methods=["POST"])
 def add_bus():
-    if "role" not in session or session["role"] != "admin":
+    if session.get("role") != "admin":
         return redirect("/login")
 
     name = request.form["bus_name"]
@@ -149,24 +143,34 @@ def add_bus():
 # ======================
 # BOOK TICKET
 # ======================
-# BOOK PAGE (GET)
 @app.route("/book/<int:bus_id>", methods=["GET", "POST"])
 def book(bus_id):
+
+    if "user_id" not in session:
+        return redirect("/login")
 
     conn = get_connection()
     cur = conn.cursor()
 
     if request.method == "POST":
         seats = int(request.form["seats"])
-        user_id = session.get("user_id")
+        user_id = session["user_id"]
 
-        cur.execute("SELECT price FROM buses WHERE bus_id=%s", (bus_id,))
-        price = cur.fetchone()[0]
+        cur.execute("SELECT price FROM buses WHERE id=%s", (bus_id,))
+        result = cur.fetchone()
+
+        if not result:
+            cur.close()
+            conn.close()
+            return "Bus not found"
+
+        price = result[0]
         total = price * seats
 
         cur.execute("""
-            INSERT INTO bookings(user_id,bus_id,seats,total_amount)
-            VALUES(%s,%s,%s,%s) RETURNING booking_id
+            INSERT INTO bookings(user_id, bus_id, seats, total_amount)
+            VALUES(%s, %s, %s, %s)
+            RETURNING booking_id
         """, (user_id, bus_id, seats, total))
 
         booking_id = cur.fetchone()[0]
@@ -178,14 +182,12 @@ def book(bus_id):
 
         return render_template("success.html", booking_id=booking_id)
 
-    # GET request
-    cur.execute("SELECT * FROM buses WHERE bus_id=%s", (bus_id,))
+    cur.execute("SELECT * FROM buses WHERE id=%s", (bus_id,))
     bus = cur.fetchone()
     cur.close()
     conn.close()
 
     return render_template("book.html", bus=bus)
-
 
 
 # ======================
@@ -213,10 +215,3 @@ def generate_pass(booking_id):
 def logout():
     session.clear()
     return redirect("/login")
-
-
-# ======================
-# RUN APP
-# ======================
-if __name__ == "__main__":
-    app.run(debug=True)
