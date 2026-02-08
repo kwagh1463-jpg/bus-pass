@@ -5,7 +5,7 @@ from reportlab.pdfgen import canvas
 import os
 
 app = Flask(__name__)
-app.secret_key = "secretkey"
+app.secret_key = os.environ.get("SECRET_KEY")
 
 
 # ======================
