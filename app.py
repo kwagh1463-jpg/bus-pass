@@ -30,10 +30,11 @@ def register():
         cur = conn.cursor()
 
         try:
-            cur.execute(
-                "INSERT INTO users (name, email, password) VALUES (%s, %s, %s)",
-                (name, email, password)
-            )
+            cur.execute("""
+                INSERT INTO users (full_name, email, password)
+                VALUES (%s, %s, %s)
+            """, (name, email, password))
+
             conn.commit()
         except Exception:
             conn.rollback()
