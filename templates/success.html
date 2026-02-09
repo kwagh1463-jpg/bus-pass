@@ -13,10 +13,10 @@
 
         <p>Your Booking ID: <strong>{{ booking_id }}</strong></p>
 
-        <a href="/download/{{ booking_id }}">
-            <button>Download Bus Pass</button>
+        <a href="/static/pass_{{ booking_id }}.pdf"
+           class="btn btn-primary mt-3">
+           Download Bus Pass
         </a>
-
 
         <br><br>
 
