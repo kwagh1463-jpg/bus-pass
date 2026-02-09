@@ -1,8 +1,11 @@
 from flask import Flask, render_template, request, redirect, session
+from flask import send_file
 from db import get_connection
 import qrcode
 from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 import os
+import io
 
 app = Flask(__name__)
 app.secret_key = "secretkey"
@@ -150,78 +153,78 @@ def book(bus_id):
     conn = get_connection()
     cur = conn.cursor()
 
-    # GET REQUEST
+    # GET request
     if request.method == "GET":
         cur.execute("SELECT * FROM buses WHERE bus_id=%s", (bus_id,))
         bus = cur.fetchone()
         cur.close()
         conn.close()
-
-        if not bus:
-            return "Bus not found"
-
         return render_template("book.html", bus=bus)
 
-    # POST REQUEST
-    seats_requested = int(request.form["seats"])
+    # POST request
+    seats = int(request.form["seats"])
     user_id = session["user_id"]
 
-    # Get bus details
-    cur.execute("SELECT price, total_seats FROM buses WHERE bus_id=%s", (bus_id,))
-    bus = cur.fetchone()
+    cur.execute("SELECT price FROM buses WHERE bus_id=%s", (bus_id,))
+    price_data = cur.fetchone()
 
-    if not bus:
-        cur.close()
-        conn.close()
+    if not price_data:
         return "Bus not found"
 
-    price, total_seats = bus
-
-    # Check already booked seats
-    cur.execute("SELECT COALESCE(SUM(seats),0) FROM bookings WHERE bus_id=%s", (bus_id,))
-    booked = cur.fetchone()[0]
-
-    available = total_seats - booked
-
-    if seats_requested > available:
-        cur.close()
-        conn.close()
-        return f"Only {available} seats available"
-
-    total_amount = price * seats_requested
+    price = price_data[0]
+    total = price * seats
 
     cur.execute("""
         INSERT INTO bookings(user_id, bus_id, seats, total_amount)
         VALUES(%s, %s, %s, %s)
         RETURNING booking_id
-    """, (user_id, bus_id, seats_requested, total_amount))
+    """, (user_id, bus_id, seats, total))
 
     booking_id = cur.fetchone()[0]
     conn.commit()
     cur.close()
     conn.close()
 
-    generate_pass(booking_id)
-
-    return render_template("success.html", booking_id=booking_id)
-
+    return generate_pass(booking_id, total)
 
 # ======================
 # GENERATE PASS
 # ======================
-def generate_pass(booking_id):
-    os.makedirs("static", exist_ok=True)
+def generate_pass(booking_id, total):
 
+    # Generate QR in memory
     qr = qrcode.make(f"Booking ID: {booking_id}")
-    qr_path = f"static/qr_{booking_id}.png"
-    qr.save(qr_path)
+    qr_bytes = io.BytesIO()
+    qr.save(qr_bytes)
+    qr_bytes.seek(0)
 
-    pdf_path = f"static/pass_{booking_id}.pdf"
-    c = canvas.Canvas(pdf_path)
+    # Generate PDF in memory
+    pdf_bytes = io.BytesIO()
+    c = canvas.Canvas(pdf_bytes)
+
     c.drawString(100, 750, "Cloud Bus Pass")
     c.drawString(100, 730, f"Booking ID: {booking_id}")
-    c.drawImage(qr_path, 100, 600, width=100, height=100)
+    c.drawString(100, 710, f"Total Amount: ₹{total}")
+
+    # Save QR temporarily inside PDF
+    qr_image = qrcode.make(f"Booking ID: {booking_id}")
+    qr_path = io.BytesIO()
+    qr_image.save(qr_path)
+    qr_path.seek(0)
+
+    from reportlab.lib.utils import ImageReader
+    c.drawImage(ImageReader(qr_path), 100, 580, width=120, height=120)
+
     c.save()
+    pdf_bytes.seek(0)
+
+    return send_file(
+        pdf_bytes,
+        as_attachment=True,
+        download_name=f"bus_pass_{booking_id}.pdf",
+        mimetype="application/pdf"
+    )
+
 
 
 # ======================
