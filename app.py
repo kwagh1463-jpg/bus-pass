@@ -185,7 +185,8 @@ def book(bus_id):
     cur.close()
     conn.close()
 
-    return generate_pass(booking_id, total)
+    return render_template("success.html", booking_id=booking_id)
+
 
 # ======================
 # GENERATE PASS
