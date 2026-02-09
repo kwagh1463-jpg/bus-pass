@@ -3,7 +3,6 @@ from flask import send_file
 from db import get_connection
 import qrcode
 from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
 import os
 import io
 
@@ -185,8 +184,7 @@ def book(bus_id):
     cur.close()
     conn.close()
 
-    return render_template("success.html", booking_id=booking_id)
-
+    return generate_pass(booking_id, total)
 
 # ======================
 # GENERATE PASS
